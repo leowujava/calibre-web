@@ -209,6 +209,77 @@ def get_reading_progress(book_id):
         return jsonify(None), 200
 
 
+@web.route("/ajax/savereadingprogress/<int:book_id>", methods=['POST'])
+@user_login_required
+def save_reading_progress(book_id):
+    """Save reading progress for a book to KoboReadingState."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    try:
+        kobo_reading_state = kobo.get_or_create_reading_state(book_id)
+
+        # Update bookmark data
+        bookmark = kobo_reading_state.current_bookmark
+        bookmark.location_source = "browser"
+        bookmark.progress_percent = data.get("progress_percent")
+        bookmark.content_source_progress_percent = data.get("content_source_progress_percent")
+        bookmark.location_value = data.get("location_value", "")
+        bookmark.location_type = data.get("location_type", "")
+
+        # Also store CFI separately in location_value if provided
+        if data.get("cfi"):
+            bookmark.location_value = data["cfi"]
+            if not bookmark.location_type:
+                bookmark.location_type = "epubcfi"
+
+        # Update read status to IN_PROGRESS if progress > 0
+        book_read = kobo_reading_state.book_read_link
+        if not book_read:
+            book_read = ub.ReadBook(user_id=int(current_user.id), book_id=book_id)
+            kobo_reading_state.book_read_link = book_read
+
+        progress = data.get("progress_percent", 0) or 0
+        if progress > 0:
+            book_read.read_status = ub.ReadBook.STATUS_IN_PROGRESS
+
+        ub.session.merge(kobo_reading_state)
+        ub.session_commit("Reading progress saved for user {} in book {}".format(current_user.id, book_id))
+
+        # Return updated state
+        response = get_reading_progress_response(kobo_reading_state)
+        return jsonify(response)
+    except Exception as e:
+        ub.session.rollback()
+        log.error("Failed to save reading progress: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+def get_reading_progress_response(kobo_reading_state):
+    """Build a JSON response dict from a KoboReadingState object."""
+    bookmark = kobo_reading_state.current_bookmark
+    book_read = kobo_reading_state.book_read_link
+    statistics = kobo_reading_state.statistics
+
+    return {
+        "bookmark": {
+            "progress_percent": bookmark.progress_percent,
+            "content_source_progress_percent": bookmark.content_source_progress_percent,
+            "location_value": bookmark.location_value,
+            "location_type": bookmark.location_type,
+            "location_source": bookmark.location_source,
+            "cfi": bookmark.location_value if bookmark.location_source and "cfi" in str(bookmark.location_source).lower() else None,
+        },
+        "status": book_read.read_status if book_read else None,
+        "statistics": {
+            "spent_reading_minutes": statistics.spent_reading_minutes,
+            "remaining_time_minutes": statistics.remaining_time_minutes,
+        },
+        "last_modified": kobo_reading_state.last_modified.isoformat() if kobo_reading_state.last_modified else None,
+    }
+
+
 @web.route("/ajax/toggleread/<int:book_id>", methods=['POST'])
 @user_login_required
 def toggle_read(book_id):
