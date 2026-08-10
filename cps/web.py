@@ -41,7 +41,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from . import constants, logger, isoLanguages, services
 from . import db, ub, config, app
-from . import calibre_db, kobo_sync_status
+from . import calibre_db, kobo, kobo_sync_status
 from .search import render_search_results, render_adv_search_results
 from .gdriveutils import getFileFromEbooksFolder, do_gdrive_download
 from .helper import check_valid_domain, check_email, check_username, \
@@ -172,6 +172,41 @@ def set_bookmark(book_id, book_format):
     ub.session.merge(l_bookmark)
     ub.session_commit("Bookmark for user {} in book {} created".format(current_user.id, book_id))
     return "", 201
+
+
+@web.route("/ajax/readingprogress/<int:book_id>", methods=['GET'])
+@user_login_required
+def get_reading_progress(book_id):
+    """Return current reading state for a book, if available."""
+    try:
+        kobo_reading_state = kobo.get_or_create_reading_state(book_id)
+        if not kobo_reading_state or not kobo_reading_state.current_bookmark:
+            return jsonify(None)
+
+        bookmark = kobo_reading_state.current_bookmark
+        book_read = kobo_reading_state.book_read_link
+        statistics = kobo_reading_state.statistics
+
+        response = {
+            "bookmark": {
+                "progress_percent": bookmark.progress_percent,
+                "content_source_progress_percent": bookmark.content_source_progress_percent,
+                "location_value": bookmark.location_value,
+                "location_type": bookmark.location_type,
+                "location_source": bookmark.location_source,
+                "cfi": bookmark.location_value if bookmark.location_source and "CFI" in str(bookmark.location_source) else None,
+            },
+            "status": book_read.read_status if book_read else None,
+            "statistics": {
+                "spent_reading_minutes": statistics.spent_reading_minutes,
+                "remaining_time_minutes": statistics.remaining_time_minutes,
+            },
+            "last_modified": kobo_reading_state.last_modified.isoformat() if kobo_reading_state.last_modified else None,
+        }
+        return jsonify(response)
+    except Exception as e:
+        log.error("Failed to get reading progress: %s", e)
+        return jsonify(None), 200
 
 
 @web.route("/ajax/toggleread/<int:book_id>", methods=['POST'])
