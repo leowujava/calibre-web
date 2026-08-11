@@ -220,6 +220,9 @@ def save_reading_progress(book_id):
     try:
         kobo_reading_state = kobo.get_or_create_reading_state(book_id)
 
+        if not kobo_reading_state or not kobo_reading_state.current_bookmark:
+            return jsonify({"error": "Reading state not available"}), 500
+
         # Update bookmark data
         bookmark = kobo_reading_state.current_bookmark
         bookmark.location_source = "browser"
