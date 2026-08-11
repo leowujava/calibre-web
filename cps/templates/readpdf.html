@@ -51,6 +51,75 @@ See https://github.com/adobe-type-tools/cmap-resources
     });
     </script>
 
+    <script>
+    // Reading progress tracking for PDF reader
+    (function() {
+        var SAVE_DEBOUNCE_MS = 3000;
+        var saveTimeout = null;
+        var saveProgressUrl = "{{ url_for('web.save_reading_progress', book_id=pdffile) }}";
+        var readingState = {{ reading_state | tojson if reading_state else 'null' }};
+        var csrfToken = "{{ csrf_token() }}";
+
+        function savePage(currentPage, totalPages) {
+            if (!saveProgressUrl) return;
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(function() {
+                var pct = Math.round((currentPage / totalPages) * 100);
+                $.ajax(saveProgressUrl, {
+                    method: "post",
+                    contentType: "application/json; charset=utf-8",
+                    data: JSON.stringify({
+                        format: "PDF",
+                        current_page: currentPage,
+                        total_pages: totalPages,
+                        progress_percent: pct
+                    }),
+                    headers: { "X-CSRFToken": csrfToken },
+                }).fail(function(xhr, status, error) {
+                    console.error("Failed to save PDF reading progress:", error);
+                });
+            }, SAVE_DEBOUNCE_MS);
+        }
+
+        // Wait for PDF.js to initialize, then hook into page navigation
+        var checkPDF = setInterval(function() {
+            if (typeof PDFViewerApplication !== 'undefined' && PDFViewerApplication.initializedPromise) {
+                clearInterval(checkPDF);
+                PDFViewerApplication.initializedPromise.then(function() {
+                    // Restore page from server state
+                    if (readingState && readingState.bookmark && readingState.bookmark.location_value) {
+                        var srvPage = parseInt(readingState.bookmark.location_value);
+                        if (!isNaN(srvPage) && srvPage >= 1 && srvPage <= PDFViewerApplication.pdfViewer.totalPages) {
+                            PDFViewerApplication.pdfViewer.currentPageNumber = srvPage;
+                        }
+                    }
+
+                    // Hook into page number changes
+                    var doc = document.getElementById('pageNumber');
+                    if (doc) {
+                        var observer = new MutationObserver(function() {
+                            try {
+                                var page = PDFViewerApplication.pdfViewer.currentPageNumber;
+                                var total = PDFViewerApplication.pdfViewer.totalPages;
+                                if (page && total) {
+                                    savePage(page, total);
+                                }
+                            } catch(e) {}
+                        });
+                        observer.observe(doc, {characterData: true, subtree: true, childList: true});
+                    }
+
+                    // Save on page unload
+                    window.addEventListener('beforeunload', function() {
+                        if (saveTimeout) clearTimeout(saveTimeout);
+                        savePage(PDFViewerApplication.pdfViewer.currentPageNumber, PDFViewerApplication.pdfViewer.totalPages);
+                    });
+                });
+            }
+        }, 100);
+    })();
+    </script>
+
     <script src="{{ url_for('static', filename='js/libs/viewer.js') }}" type="module">></script>
 
   </head>
