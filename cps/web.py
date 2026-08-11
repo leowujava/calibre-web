@@ -1704,13 +1704,20 @@ def read_book(book_id, book_format):
         bookmark = ub.session.query(ub.Bookmark).filter(and_(ub.Bookmark.user_id == int(current_user.id),
                                                              ub.Bookmark.book_id == book_id,
                                                              ub.Bookmark.format == book_format.upper())).first()
+    # check if book has reading progress state (for auto-save / restore)
+    reading_state = None
+    if current_user.is_authenticated:
+        kobo_state = kobo.get_or_create_reading_state(book_id)
+        if kobo_state and kobo_state.current_bookmark:
+            reading_state = get_reading_progress_response(kobo_state)
     if book_format.lower() == "epub" or book_format.lower() == "kepub":
         log.debug("Start [k]epub reader for %d", book_id)
         return render_title_template('read.html', bookid=book_id, title=book.title, bookmark=bookmark,
-                                     book_format=book_format)
+                                      book_format=book_format, reading_state=reading_state)
     elif book_format.lower() == "pdf":
         log.debug("Start pdf reader for %d", book_id)
-        return render_title_template('readpdf.html', pdffile=book_id, title=book.title)
+        return render_title_template('readpdf.html', pdffile=book_id, title=book.title,
+                                      reading_state=reading_state)
     elif book_format.lower() == "txt":
         log.debug("Start txt reader for %d", book_id)
         return render_title_template('readtxt.html', txtfile=book_id, title=book.title)
@@ -1724,7 +1731,7 @@ def read_book(book_id, book_format):
                 entries = calibre_db.get_filtered_book(book_id)
                 log.debug("Start mp3 listening for %d", book_id)
                 return render_title_template('listenmp3.html', mp3file=book_id, audioformat=book_format.lower(),
-                                             entry=entries, bookmark=bookmark)
+                                              entry=entries, bookmark=bookmark, reading_state=reading_state)
         for fileExt in ["cbr", "cbt", "cbz"]:
             if book_format.lower() == fileExt:
                 all_name = str(book_id)
@@ -1735,7 +1742,7 @@ def read_book(book_id, book_format):
                         title = title + " #" + '{0:.2f}'.format(book.series_index).rstrip('0').rstrip('.')
                 log.debug("Start comic reader for %d", book_id)
                 return render_title_template('readcbr.html', comicfile=all_name, title=title,
-                                             extension=fileExt, bookmark=bookmark)
+                                              extension=fileExt, bookmark=bookmark, reading_state=reading_state)
         log.debug("Selected book is unavailable. File does not exist or is not accessible")
         flash(_("Oops! Selected book is unavailable. File does not exist or is not accessible"),
               category="error")
