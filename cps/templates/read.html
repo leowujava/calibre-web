@@ -147,9 +147,12 @@
             filePath: "{{ url_for('static', filename='js/libs/') }}",
             cssPath: "{{ url_for('static', filename='css/') }}",
             bookmarkUrl: "{{ url_for('web.set_bookmark', book_id=bookid, book_format=book_format) }}",
+            saveProgressUrl: "{{ url_for('web.save_reading_progress', book_id=bookid) }}",
             bookUrl: "{{ url_for('web.serve_book', book_id=bookid, book_format=book_format, anyname='file.epub') }}",
             bookmark: "{{ bookmark.bookmark_key if bookmark != None }}",
-            useBookmarks: "{{ current_user.is_authenticated | tojson }}"
+            useBookmarks: "{{ current_user.is_authenticated | tojson }}",
+            readingStatus: {{ reading_state.bookmark.progress_percent | default(0) | tojson }},
+            readingState: {{ reading_state | tojson if reading_state else 'null' }}
         };
 
       // load custom theme color from localStorage (if any)

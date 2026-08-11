@@ -1,6 +1,8 @@
 /* global $, calibre, EPUBJS, ePubReader */
 
 var reader;
+var saveTimeout = null;
+var SAVE_DEBOUNCE_MS = 3000;
 
 (function () {
     "use strict";
@@ -105,6 +107,25 @@ var reader;
                     }
                 } catch (e) {}
 
+                    // Also try to restore from server-side reading state
+                    try {
+                        if (window.calibre && window.calibre.readingState && window.calibre.readingState.bookmark) {
+                            var srvBookmark = window.calibre.readingState.bookmark;
+                            if (srvBookmark.cfi || srvBookmark.location_value) {
+                                var serverCfi = srvBookmark.cfi || srvBookmark.location_value;
+                                // Only use server position if no local position exists
+                                if (!_savedPos) {
+                                    try {
+                                        reader.rendition.display(serverCfi);
+                                    } catch (e) {}
+                                }
+                                // Update progress display from server state
+                                if (srvBookmark.progress_percent != null) {
+                                    progressDiv.textContent = Math.round(srvBookmark.progress_percent) + "%";
+                                }
+                            }
+                        }
+                    } catch (e) {}
                 reader.rendition.on("relocated", (location) => {
                     let percentage = Math.round(location.end.percentage * 100);
                     progressDiv.textContent = percentage + "%";
@@ -134,6 +155,14 @@ var reader;
                             JSON.stringify(posObj)
                         );
                     } catch (e) {}
+
+                    // Auto-save progress to server (debounced)
+                    if (window.calibre && window.calibre.useBookmarks) {
+                        if (saveTimeout) clearTimeout(saveTimeout);
+                        saveTimeout = setTimeout(function() {
+                            saveProgress(cfi, location.start.percentage, percentage);
+                        }, SAVE_DEBOUNCE_MS);
+                    }
                 });
                 reader.rendition.reportLocation();
                 progressDiv.style.visibility = "visible";
@@ -170,6 +199,39 @@ var reader;
             alert(error);
         });
     }
+
+    function saveProgress(cfi, percentage, displayPercentage) {
+        if (!window.calibre || !window.calibre.saveProgressUrl) return;
+        
+        var csrftoken = $("input[name='csrf_token']").val();
+        $.ajax(window.calibre.saveProgressUrl, {
+            method: "post",
+            contentType: "application/json; charset=utf-8",
+            data: JSON.stringify({
+                format: "EPUB",
+                cfi: cfi,
+                progress_percent: displayPercentage,
+                content_source_progress_percent: percentage
+            }),
+            headers: { "X-CSRFToken": csrftoken },
+        }).fail(function (xhr, status, error) {
+            console.error("Failed to save reading progress:", error);
+        });
+    }
+
+    // Save on page unload
+    $(window).on('beforeunload', function() {
+        if (reader && reader.rendition) {
+            try {
+                var location = reader.rendition.location;
+                if (location) {
+                    var cfi = location.start ? location.start.cfi : null;
+                    var p = location.start ? Math.round(location.start.percentage * 100) : 0;
+                    saveProgress(cfi, location.start ? location.start.percentage : 0, p);
+                }
+            } catch (e) {}
+        }
+    });
 
     // Default settings load
     const theme = localStorage.getItem("calibre.reader.theme") ?? "lightTheme";
