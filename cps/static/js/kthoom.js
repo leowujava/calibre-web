@@ -25,6 +25,8 @@ if (window.opera) {
     };
 }
 
+var SAVE_DEBOUNCE_MS = 3000;
+var saveTimeout = null;
 var kthoom;
 
 // gets the element with the given id
@@ -855,6 +857,27 @@ function setBookmark() {
     }).fail(function (xhr, status, error) {
         console.error(error);
     });
+    
+    if (calibre && calibre.saveProgressUrl && typeof currentImage === 'number') {
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(function() {
+            if (typeof totalImages === 'undefined') totalImages = 1;
+            let pct = Math.round(((currentImage + 1) / totalImages) * 100);
+            $.ajax(calibre.saveProgressUrl, {
+                method: "post",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({
+                    format: extension ? extension.toUpperCase() : "CBZ",
+                    current_page: currentImage + 1,
+                    total_pages: totalImages,
+                    progress_percent: pct
+                }),
+                headers: { "X-CSRFToken": csrf_token },
+            }).fail(function (xhr, status, error) {
+                console.error("Failed to save reading progress:", error);
+            });
+        }, SAVE_DEBOUNCE_MS);
+    }
 }
 
 $(function() {
@@ -867,5 +890,26 @@ $(function() {
     });
     $('#right').click(function () {
         showRightPage();
+    });
+    
+    $(window).on('beforeunload', function() {
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = null;
+        if (typeof currentImage === 'number' && calibre && calibre.saveProgressUrl) {
+            let csrf_token = $("input[name='csrf_token']").val();
+            if (typeof totalImages === 'undefined') totalImages = 1;
+            let pct = Math.round(((currentImage + 1) / totalImages) * 100);
+            $.ajax(calibre.saveProgressUrl, {
+                method: "post",
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify({
+                    format: extension ? extension.toUpperCase() : "CBZ",
+                    current_page: currentImage + 1,
+                    total_pages: totalImages,
+                    progress_percent: pct
+                }),
+                headers: { "X-CSRFToken": csrf_token },
+            });
+        }
     });
 });

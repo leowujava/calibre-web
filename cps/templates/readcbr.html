@@ -185,12 +185,20 @@
   <script>
     window.calibre = {
         bookmarkUrl: "{{ url_for('web.set_bookmark', book_id=comicfile, book_format=extension.upper()) }}",
+        saveProgressUrl: "{{ url_for('web.save_reading_progress', book_id=comicfile) }}",
         bookmark: "{{ bookmark.bookmark_key if bookmark != None }}",
-        useBookmarks: "{{ current_user.is_authenticated | tojson }}"
+        useBookmarks: "{{ current_user.is_authenticated | tojson }}",
+        readingState: {{ reading_state | tojson if reading_state else 'null' }}
     };
 
     document.onreadystatechange = function () {
       if (document.readyState == "complete") {
+          if (calibre && calibre.useBookmarks && calibre.readingState && calibre.readingState.bookmark) {
+              var srv = calibre.readingState.bookmark;
+              if (srv.location_value && !isNaN(parseInt(srv.location_value))) {
+                  currentImage = parseInt(srv.location_value);
+              }
+          }
           if (calibre.useBookmarks) {
               currentImage = eval(calibre.bookmark);
               if (typeof currentImage !== 'number') {
