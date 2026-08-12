@@ -58,7 +58,12 @@ def del_temp_dir():
 def validate_mime_type(file_buffer, allowed_extensions):
     if error:
         log.error(error)
-        return False
+        if not allowed_extensions:
+            return False
+        file_buffer.seek(0)
+        ext = file_buffer.filename.rsplit('.', 1)[-1].lower() if file_buffer.filename else ''
+        log.info("Magic unavailable, falling back to extension check: ext={0}, result={1}".format(ext, ext in allowed_extensions))
+        return ext in allowed_extensions
     mime = magic.Magic(mime=True)
     allowed_mimetypes = list()
     for x in allowed_extensions:

@@ -49,7 +49,6 @@ from .epub import get_epub_layout
 from .constants import COVER_THUMBNAIL_SMALL, COVER_THUMBNAIL_MEDIUM, COVER_THUMBNAIL_LARGE, BASE_DIR
 from .helper import get_download_link
 from .services import SyncToken as SyncToken
-from .web import download_required
 from .kobo_auth import requires_kobo_auth, get_auth_token
 
 KOBO_FORMATS = {"KEPUB": ["KEPUB"], "EPUB": ["EPUB3", "EPUB"]}
@@ -335,7 +334,6 @@ def generate_sync_response(sync_token, sync_results, set_cont=False):
 
 @kobo.route("/v1/library/<book_uuid>/metadata")
 @requires_kobo_auth
-@download_required
 def HandleMetadataRequest(book_uuid):
     if not current_app.wsgi_app.is_proxied:
         log.debug('Kobo: Received unproxied request, changed request port to external server port')
@@ -1127,7 +1125,6 @@ def HandleInitRequest():
 
 @kobo.route("/download/<book_id>/<book_format>")
 @requires_kobo_auth
-@download_required
 def download_book(book_id, book_format):
     return get_download_link(book_id, book_format, "kobo")
 

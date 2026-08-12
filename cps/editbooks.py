@@ -944,9 +944,12 @@ def create_book_on_upload(modify_date, meta):
 def file_handling_on_upload(requested_file):
     # check if file extension is correct
     allowed_extensions = config.config_upload_formats.split(',')
+    log.info("file_handling_on_upload: filename={0}, config_check_extensions={1}, allowed_extensions={2}".format(requested_file.filename if requested_file else None, config.config_check_extensions, allowed_extensions))
     if requested_file:
         if config.config_check_extensions and allowed_extensions != ['']:
-            if not validate_mime_type(requested_file, allowed_extensions):
+            result = validate_mime_type(requested_file, allowed_extensions)
+            log.info("validate_mime_type returned: {0}".format(result))
+            if not result:
                 flash(_("File type isn't allowed to be uploaded to this server"), category="error")
                 return None, make_response(jsonify(location=url_for("web.index")))
     if '.' in requested_file.filename:
@@ -1415,8 +1418,11 @@ def upload_book_formats(requested_files, book, book_id, no_cover=True):
     allowed_extensions = config.config_upload_formats.split(',')
     for requested_file in requested_files:
         current_filename = requested_file.filename
+        log.info("upload_book_formats: filename={0}, config_check_extensions={1}, allowed={2}".format(current_filename, config.config_check_extensions, allowed_extensions))
         if config.config_check_extensions and allowed_extensions != ['']:
-            if not validate_mime_type(requested_file, allowed_extensions):
+            mime_result = validate_mime_type(requested_file, allowed_extensions)
+            log.info("validate_mime_type returned: {0}".format(mime_result))
+            if not mime_result:
                 flash(_("File type isn't allowed to be uploaded to this server"), category="error")
                 error = True
                 continue
